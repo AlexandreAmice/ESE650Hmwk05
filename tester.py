@@ -39,8 +39,26 @@ class Tester(object):
         np.ndarray
           The value for the given policy
         """
-        # TODO: Your Code Goes Here
-        return None
+        Ppi = np.zeros((env.nS, env.nS))
+        Rpi = np.zeros(env.nS)
+
+        #Set up matrices
+        for s in range(0, env.nS):
+            a = policy[s]
+            for item in env.P[s][a]:
+                # item 0 = p(s'|s,a); #item 1 = s'; item 2 = reward; item 4 = isterminal
+                Ppi[s,item[1]] += item[0]
+                Rpi[s] += item[0] * item[2]
+
+        value = np.zeros(env.nS)
+        valueOld = -float('Inf')*np.ones((env.nS, 1))
+        while np.any(abs(value-valueOld)) > tol:
+            valueOld = value
+            value = Rpi + gamma*np.matmul(Ppi, valueOld)
+
+
+
+        return value
 
     def policy_iteration(self, env, gamma, max_iterations=int(1e3), tol=1e-3):
         """Runs policy iteration.
@@ -71,7 +89,7 @@ class Tester(object):
            Returns optimal policy, value function, number of policy
            improvement iterations, and number of value iterations.
         """
-        # TODO:  Your code goes here.
+        #Setup matrices
         return None, None, 0, 0
 
     def value_iteration(self, env, gamma, max_iterations=int(1e3), tol=1e-3):
@@ -99,9 +117,25 @@ class Tester(object):
         np.ndarray, iteration
           The value function and the number of iterations it took to converge.
         """
-        nA = env.action_space
-        nS = env.observation_space
-        return None, None
+        valueNew = np.zeros((env.nS))
+        valueOld = -float('Inf')*np.ones((env.nS, 1))
+        numIter = 0
+        while np.any(abs(valueNew-valueOld) > tol) and numIter < max_iterations:
+            numIter += 1
+            options = np.zeros((env.nS, env.nA))
+            valueOld = valueNew
+            for a in range(0,env.nA):
+                Pssa = np.zeros((env.nS, env.nS))
+                Rsa = np.zeros(env.nS)
+                for s in range(0,env.nS):
+                    for item in env.P[s][a]:
+                        #item 0 = p(s'|s,a); #item 1 = s'; item 2 = reward; item 4 = isterminal
+                        Pssa[s][item[1]] += item[0]
+                        Rsa[s] += item[0]*item[2]
+                options[:,a] = Rsa + gamma*np.matmul(Pssa,valueOld)
+            valueNew = np.amax(options, 1)
+
+        return valueNew, numIter
 
     def policy_gradient_test(self, state):
         """
