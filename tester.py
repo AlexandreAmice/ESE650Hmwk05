@@ -1,6 +1,9 @@
 import numpy as np
 import torch
 import gym
+from pytorchModelTrainer import Policy
+from torch.autograd import Variable
+
 
 class Tester(object):
 
@@ -8,8 +11,7 @@ class Tester(object):
         """
         Initialize the Tester object by loading your model.
         """
-        # TODO: Load your pyTorch model for Policy Gradient here.
-        pass
+        self.policy = torch.load('learnedPolicy')
 
 
     def evaluate_policy(self, env, gamma, policy, max_iterations=int(1e3), tol=1e-3):
@@ -38,9 +40,12 @@ class Tester(object):
         -------
         np.ndarray
           The value for the given policy
+
+        number of iterations
         """
         Ppi = np.zeros((env.nS, env.nS))
         Rpi = np.zeros(env.nS)
+        policy = np.reshape(policy, (16,))
 
         #Set up matrices
         for s in range(0, env.nS):
@@ -52,13 +57,14 @@ class Tester(object):
 
         value = np.zeros(env.nS)
         valueOld = -float('Inf')*np.ones((env.nS, 1))
-        while np.any(abs(value-valueOld)) > tol:
+        numIter = 0
+        while np.any(np.abs(value-valueOld)) > tol:
             valueOld = value
             value = Rpi + gamma*np.matmul(Ppi, valueOld)
+            numIter += 1
 
 
-
-        return value
+        return value, numIter
 
     def policy_iteration(self, env, gamma, max_iterations=int(1e3), tol=1e-3):
         """Runs policy iteration.
@@ -90,7 +96,33 @@ class Tester(object):
            improvement iterations, and number of value iterations.
         """
         #Setup matrices
-        return None, None, 0, 0
+        Pssa = np.zeros((env.nS, env.nS, env.nA))
+        Rsa = np.zeros((env.nS, env.nA))
+        for a in range(0, env.nA):
+            for s in range(0, env.nS):
+                for item in env.P[s][a]:
+                    # item 0 = p(s'|s,a); #item 1 = s'; item 2 = reward; item 4 = isterminal
+                    Pssa[s,item[1],a] += item[0]
+                    Rsa[s,a] += item[0] * item[2]
+
+        numPolicyImprov = 0
+        valueOld = -float('Inf') * np.ones((env.nS, 1))
+        policy = np.zeros(env.nS)
+        (valueNew, numValIter) = self.evaluate_policy(env, gamma, policy)
+        while np.any(abs(valueNew-valueOld)) > tol:
+            valueOld = valueNew
+            qpi = np.zeros((env.nS, env.nA))
+            for a in range(0,env.nA):
+                qpi[:,a] = Rsa[:,a] + gamma * np.matmul(Pssa[:,:,a], valueOld)
+            policy = np.argmax(qpi, 1)
+            (valueNew, valIter) = self.evaluate_policy(env, gamma, policy)
+            numValIter += valIter
+            numPolicyImprov += 1
+
+
+
+
+        return policy, valueNew, numPolicyImprov, numValIter
 
     def value_iteration(self, env, gamma, max_iterations=int(1e3), tol=1e-3):
         """Runs value iteration for a given gamma and environment.
@@ -134,7 +166,6 @@ class Tester(object):
                         Rsa[s] += item[0]*item[2]
                 options[:,a] = Rsa + gamma*np.matmul(Pssa,valueOld)
             valueNew = np.amax(options, 1)
-
         return valueNew, numIter
 
     def policy_gradient_test(self, state):
@@ -150,3 +181,16 @@ class Tester(object):
         """
         # TODO. Your Code goes here.
         return 0
+
+    def select_action(self, state):
+        state = torch.from_numpy(state).type(torch.FloatTensor)
+        state = self.policy(Variable(state))
+        c = torch.distributions.Categorical(state)
+        action = c.sample()
+        log_prob = c.log_prob(action)
+
+        if self.policy.policy_history.dim() != 0:
+            self.policy.policy_history = torch.cat([self.policy.policy_history, log_prob])
+        else:
+            self.policy.policy_history = c.log_prob(action)
+        return action
